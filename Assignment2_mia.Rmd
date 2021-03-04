@@ -35,15 +35,255 @@ The research questions you have to answer are the following:
 Q1.1) Does schizophrenia involve altercentric intrusion? Define model and priors. Test the implications of your priors (prior predictive checks) and if needed adjust them. Run the model. Test the quality of the fitted model (posterior predictive checks, prior-posterior updates). Assess the evidence in favor of an increased altercentric intrusion in schizophrenia. Report the model and the results, including plots.
 
 ```{r}
+pacman::p_load(tidyverse, rethinking, brms, patchwork, here)
 
+#loading data and mean-centering
+df <- read_csv("Ass2.csv") %>% 
+  mutate(
+    AI = (AltercentricIntrusion - mean(AltercentricIntrusion, na.rm = T))/sd(AltercentricIntrusion, na.rm = T),
+    MR = (MindReading - mean(MindReading, na.rm = T))/sd(MindReading, na.rm = T),
+    VH = (VoiceHearing - mean(VoiceHearing, na.rm = T))/sd(VoiceHearing, na.rm = T),
+    A = (Apathy - mean(Apathy, na.rm = T))/sd(Apathy, na.rm = T))
+
+#making the simplest model. schizophrenia predicted by AI
+m0 <- bf(AI ~ 1 + Diagnosis)
+
+#getting priors
+get_prior(
+  m0,
+  df,
+  family = gaussian
+)
+
+#looking at altercentric intrusion to see what good priors could be
+rethinking::dens(df$AI)
 ```
 
+
+```{r}
+#defining priors
+m0_p <- c(
+  prior(normal(0, 1), class = Intercept), #since we scaled the data, these priors for intercept are reasonable 
+  prior(normal(1, 0.5), class = sigma), #we expect the model to perform as bad as the mean
+  prior(normal(0, 0.05), class = b, coef = Diagnosis ) #testing a null hypothesis that diagnosis has zero effect
+)
+
+#building the model
+m1 <- brm(
+  formula = m0,
+  data = df,
+  family = gaussian,
+  prior = m0_p,
+  sample_prior= T, #True, because then it includes the likelihood
+  file = "m1"
+)
+
+#predictive posterior check 
+p1 <- pp_check(m1, nsamples = 100)
+p1
+
+#posterior stuff
+posterior <-  posterior_samples(m1)
+
+
+#plotting the intercept
+ggplot(posterior) +
+  theme_classic() +
+  geom_density(aes(prior_Intercept), fill="red", alpha=0.3) +
+  geom_density(aes(b_Intercept), fill="blue", alpha=0.5)
+
+#plotting sigma
+ggplot(posterior) +
+  theme_classic() +
+  geom_density(aes(prior_sigma), fill="red", alpha=0.3) +
+  geom_density(aes(sigma), fill="blue", alpha=0.5) 
+
+#plotting the beta value 
+ggplot(posterior) +
+  theme_classic() +
+  geom_density(aes(prior_b_Diagnosis), fill="red", alpha=0.3) +
+  geom_density(aes(b_Diagnosis), fill="blue", alpha=0.5)
+```
+
+```{r}
+#trying a new intercept priors
+
+#defining priors
+m0_p2 <- c(
+  prior(normal(0, 1), class = Intercept), #since we scaled the data, these priors for intercept are reasonable
+  prior(normal(1, 0.5), class = sigma), #we expect the model to perform as bad as the mean
+  prior(normal(0, 0.5), class = b, coef = Diagnosis ) #changing the prior because the previous plot showed a too conservative and confident prior. allowing more 
+)
+
+#building the model
+m1 <- brm(
+  formula = m0,
+  data = df,
+  family = gaussian,
+  prior = m0_p2,
+  sample_prior= T, 
+  #file = "m1" comenting out this because i want to overwrite 
+)
+
+#predictive posterior check 
+p1 <- pp_check(m1, nsamples = 100)
+p1
+
+#posterior stuff
+posterior.v2 <-  posterior_samples(m1)
+
+#plotting the beta value 
+ggplot(posterior.v2) +
+  theme_classic() +
+  geom_density(aes(prior_b_Diagnosis), fill="red", alpha=0.3) +
+  geom_density(aes(b_Diagnosis), fill="blue", alpha=0.5)
+```
+```{r}
+#Assessing the evidence in favor of an increased altercentric intrusion in schizophrenia.
+conditional_effects(m1) #shows model predictions
+
+plot(conditional_effects(m1, spaghetti=T, nsamples=100, method = "fitted"), points=T)
+#Samples100 lines from the mean expected value, and then we can see which are the optimal models that are compatible with this standard error.
+
+plot(conditional_effects(m1, spaghetti=T, nsamples=100, method = "predict"), points=T) # here we say, show us also the sigma aka what we know we should expect as an error
+
+#now we test the hypothesis
+hypothesis(m1, "Diagnosis > 0.1") #given our model, what are the chances that the effect of Diagnosis is above 0
+```
 
 Q1.2) Is altercentric intrusion related to specific symptoms *in the patients*? Identify which of the symptoms could be relevant (given their description above). Should you include more than one symptom? Build models, priors, predictive checks. Assess the evidence and report models and results, including plots. Discuss whether the results make sense.
 
 
 ```{r}
+#subsetting so we only have patients 
+patients <- df %>% 
+  filter(Diagnosis == 1)
 
+#making the simplest model. schizophrenia predicted by AI
+m_vh_mr <- bf(AI ~ 1 + VH + MR)
+
+#getting priors
+get_prior(
+  m_vh_mr,
+  patients,
+  family = gaussian
+)
+
+#looking at altercentric intrusion to see what good priors could be
+rethinking::dens(patients$AI)
+```
+
+
+```{r}
+#defining priors
+m_vh_mr_p <- c(
+  prior(normal(0, 1), class = Intercept), #since we scaled the data, these priors for intercept are reasonable
+  prior(normal(1, 0.5), class = sigma), #we expect the model to perform as bad as the mean
+  prior(normal(0, 0.25), class = b, coef = VH ),
+  prior(normal(0, 0.25), class = b, coef = MR)
+)
+
+#building the model
+m2 <- brm(
+  formula = m_vh_mr,
+  data = patients,
+  family = gaussian,
+  prior = m_vh_mr_p,
+  sample_prior= T, #True, because then it includes the likelihood
+  file = "m2"
+)
+
+#predictive posterior check 
+pp_check(m2, nsamples = 100)
+
+
+#posterior stuff
+patients_posterior <-  posterior_samples(m2)
+
+```
+
+
+```{r}
+#plotting the intercept
+ggplot(patients_posterior) +
+  theme_classic() +
+  geom_density(aes(prior_Intercept), fill="red", alpha=0.3) +
+  geom_density(aes(b_Intercept), fill="blue", alpha=0.5)
+
+#plotting sigma
+ggplot(patients_posterior) +
+  theme_classic() +
+  geom_density(aes(prior_sigma), fill="red", alpha=0.3) +
+  geom_density(aes(sigma), fill="blue", alpha=0.5) 
+
+#plotting the beta values
+ggplot(patients_posterior) +
+  theme_classic() +
+  geom_density(aes(prior_b_MR), fill="red", alpha=0.3) +
+  geom_density(aes(b_MR), fill="blue", alpha=0.5)
+
+#plotting the beta values 
+ggplot(patients_posterior) +
+  theme_classic() +
+  geom_density(aes(prior_b_VH), fill="red", alpha=0.3) +
+  geom_density(aes(b_VH), fill="blue", alpha=0.5)
+```
+```{r}
+#Assessing the evidence in favor of an increased altercentric intrusion in schizophrenia.
+conditional_effects(m1) #shows model predictions
+
+plot(conditional_effects(m1, spaghetti=T, nsamples=100, method = "fitted"), points=T)
+#Samples100 lines from the mean expected value, and then we can see which are the optimal models that are compatible with this standard error.
+
+plot(conditional_effects(m1, spaghetti=T, nsamples=100, method = "predict"), points=T) # here we say, show us also the sigma aka what we know we should expect as an error
+
+#testing hypothesis
+?hypothesis
+hypothesis(m2, "VH > 0") 
+hypothesis(m2, "MR > 0") 
+
+m2
+
+```
+
+```{r}
+#lolling around with priors
+#defining priors
+m_vh_mr_p2 <- c(
+  prior(normal(0, 1), class = Intercept), #since we scaled the data, these priors for intercept are reasonable
+  prior(normal(1, 0.5), class = sigma), #we expect the model to perform as bad as the mean
+  prior(normal(0, 0.5), class = b, coef = VH ),
+  prior(normal(0, 0.5), class = b, coef = MR)
+)
+
+#building the model
+m2_2 <- brm(
+  formula = m_vh_mr,
+  data = patients,
+  family = gaussian,
+  prior = m_vh_mr_p2,
+  sample_prior= T, #True, because then it includes the likelihood
+  #file = "m2"
+)
+
+#predictive posterior check 
+pp_check(m2_2, nsamples = 100)
+
+
+#posterior stuff
+patients_posterior2 <-  posterior_samples(m2_2)
+
+#plotting the beta values
+ggplot(patients_posterior2) +
+  theme_classic() +
+  geom_density(aes(prior_b_MR), fill="red", alpha=0.3) +
+  geom_density(aes(b_MR), fill="blue", alpha=0.5)
+
+#plotting the beta values 
+ggplot(patients_posterior2) +
+  theme_classic() +
+  geom_density(aes(prior_b_VH), fill="red", alpha=0.3) +
+  geom_density(aes(b_VH), fill="blue", alpha=0.5)
 ```
 
 
