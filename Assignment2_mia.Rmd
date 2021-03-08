@@ -45,6 +45,7 @@ df <- read_csv("Ass2.csv") %>%
     VH = (VoiceHearing - mean(VoiceHearing, na.rm = T))/sd(VoiceHearing, na.rm = T),
     A = (Apathy - mean(Apathy, na.rm = T))/sd(Apathy, na.rm = T))
 
+
 #making the simplest model. schizophrenia predicted by AI
 m0 <- bf(AI ~ 1 + Diagnosis)
 
@@ -106,7 +107,7 @@ ggplot(posterior) +
 ```
 
 ```{r}
-#trying a new intercept priors
+#trying new intercept priors
 
 #defining priors
 m0_p2 <- c(
@@ -122,7 +123,7 @@ m1 <- brm(
   family = gaussian,
   prior = m0_p2,
   sample_prior= T, 
-  #file = "m1" comenting out this because i want to overwrite 
+  file = "m1.2" #overwriting so need new file name
 )
 
 #predictive posterior check 
@@ -139,6 +140,10 @@ ggplot(posterior.v2) +
   geom_density(aes(b_Diagnosis), fill="blue", alpha=0.5)
 ```
 ```{r}
+#making diagnosis factor
+df <- df %>% 
+  mutate(Diagnosis = as.factor(Diagnosis))
+
 #Assessing the evidence in favor of an increased altercentric intrusion in schizophrenia.
 conditional_effects(m1) #shows model predictions
 
@@ -230,19 +235,12 @@ ggplot(patients_posterior) +
 ```
 ```{r}
 #Assessing the evidence in favor of an increased altercentric intrusion in schizophrenia.
-conditional_effects(m1) #shows model predictions
+conditional_effects(m2) #shows model predictions
 
-plot(conditional_effects(m1, spaghetti=T, nsamples=100, method = "fitted"), points=T)
+plot(conditional_effects(m2, spaghetti=T, nsamples=100, method = "fitted"), points=T)
 #Samples100 lines from the mean expected value, and then we can see which are the optimal models that are compatible with this standard error.
 
-plot(conditional_effects(m1, spaghetti=T, nsamples=100, method = "predict"), points=T) # here we say, show us also the sigma aka what we know we should expect as an error
-
-#testing hypothesis
-?hypothesis
-hypothesis(m2, "VH > 0") 
-hypothesis(m2, "MR > 0") 
-
-m2
+plot(conditional_effects(m2, spaghetti=T, nsamples=100, method = "predict"), points=T) # here we say, show us also the sigma aka what we know we should expect as an error
 
 ```
 
@@ -263,7 +261,7 @@ m2_2 <- brm(
   family = gaussian,
   prior = m_vh_mr_p2,
   sample_prior= T, #True, because then it includes the likelihood
-  #file = "m2"
+  file = "m2.2"
 )
 
 #predictive posterior check 
@@ -290,9 +288,98 @@ ggplot(patients_posterior2) +
 ## Second part
 
 Q2.1) However, we know that the diagnosis is based on symptom assessment: if the overall sum of symptoms is severe enough, the participant gets a diagnosis. In other words, by selecting the patients, and including the symptoms in the model we might have inadvertently introduced an issue in our inference. Do try to draw a causal graph (Directed Acyclical Graph) of the variables and compare it with the types of causal graphs presented in the slides. Discuss which biases you might have introduced.
+```{r}
+library(dagitty)
+dag <- dagitty( "dag {
+  AI <- VH
+  VH -> D <- MR -> AI 
+  A -> D
+}")
+adjustmentSets( dag , exposure="VH" , outcome="AI" ) #nothing
+
+coordinates( dag ) <- list( x=c(AI=1.5,VH=2,D=1.5,MR=1, A=1.5) ,
+y=c(AI=0,VH=1.5,D=1.5,MR=1.5, A=3) )
+
+drawdag( dag )
+```
 
 Q2.2.) Redesign your analysis following the graph and report how the results change
+```{r}
+#now we do it wihtout only having patients bc it creates confounds 
+#making the simplest model. schizophrenia predicted by AI
+m_vh_mr_2 <- bf(AI ~ 1 + VH + MR)
 
+#getting priors
+get_prior(
+  m_vh_mr_2,
+  df,
+  family = gaussian
+)
+
+
+#defining priors
+m_vh_mr_p2 <- c(
+  prior(normal(0, 1), class = Intercept), #since we scaled the data, these priors for intercept are reasonable
+  prior(normal(1, 0.5), class = sigma), #we expect the model to perform as bad as the mean
+  prior(normal(0, 0.25), class = b, coef = VH ),
+  prior(normal(0, 0.25), class = b, coef = MR)
+)
+
+#building the model
+m3 <- brm(
+  formula = m_vh_mr_2,
+  data = df,
+  family = gaussian,
+  prior = m_vh_mr_p2,
+  sample_prior= T, #True, because then it includes the likelihood
+  file = "m2.2"
+)
+
+#predictive posterior check 
+pp_check(m3, nsamples = 100)
+
+
+#posterior stuff
+m3_posterior <-  posterior_samples(m3)
+```
+
+```{r}
+#plotting the intercept
+ggplot(m3_posterior) +
+  theme_classic() +
+  geom_density(aes(prior_Intercept), fill="red", alpha=0.3) +
+  geom_density(aes(b_Intercept), fill="blue", alpha=0.5)
+
+#plotting sigma
+ggplot(m3_posterior) +
+  theme_classic() +
+  geom_density(aes(prior_sigma), fill="red", alpha=0.3) +
+  geom_density(aes(sigma), fill="blue", alpha=0.5) 
+
+#plotting the beta values
+ggplot(m3_posterior) +
+  theme_classic() +
+  geom_density(aes(prior_b_MR), fill="red", alpha=0.3) +
+  geom_density(aes(b_MR), fill="blue", alpha=0.5)
+
+#plotting the beta values 
+ggplot(m3_posterior) +
+  theme_classic() +
+  geom_density(aes(prior_b_VH), fill="red", alpha=0.3) +
+  geom_density(aes(b_VH), fill="blue", alpha=0.5)
+```
+```{r}
+#Assessing the evidence in favor of an increased altercentric intrusion in schizophrenia.
+conditional_effects(m3) #shows model predictions
+
+plot(conditional_effects(m3, spaghetti=T, nsamples=100, method = "fitted"), points=T)
+#Samples100 lines from the mean expected value, and then we can see which are the optimal models that are compatible with this standard error.
+
+plot(conditional_effects(m3, spaghetti=T, nsamples=100, method = "predict"), points=T) # here we say, show us also the sigma aka what we know we should expect as an error
+
+#hypothesis testing
+hypothesis(m3, "MR > 0")
+```
 
 ## Third part
 
@@ -348,7 +435,5 @@ pairs.panels(dplyr::select(d,-Diagnosis, -ID))
 d1 <- d %>% subset(Diagnosis==1) %>% dplyr::select(-Diagnosis, -ID)
 pairs.panels(d1)
 
-
-write_csv(d, "data/Ass2.csv")
 ```
 
