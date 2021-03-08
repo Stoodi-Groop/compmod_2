@@ -88,22 +88,24 @@ posterior <-  posterior_samples(m1)
 
 
 #plotting the intercept
-ggplot(posterior) +
+p1<- ggplot(posterior) +
   theme_classic() +
   geom_density(aes(prior_Intercept), fill="red", alpha=0.3) +
   geom_density(aes(b_Intercept), fill="blue", alpha=0.5)
 
 #plotting sigma
-ggplot(posterior) +
+p2 <- ggplot(posterior) +
   theme_classic() +
   geom_density(aes(prior_sigma), fill="red", alpha=0.3) +
   geom_density(aes(sigma), fill="blue", alpha=0.5) 
 
 #plotting the beta value 
-ggplot(posterior) +
+p3 <- ggplot(posterior) +
   theme_classic() +
   geom_density(aes(prior_b_Diagnosis), fill="red", alpha=0.3) +
   geom_density(aes(b_Diagnosis), fill="blue", alpha=0.5)
+
+p1+p2+p3
 ```
 
 ```{r}
@@ -153,7 +155,7 @@ plot(conditional_effects(m1, spaghetti=T, nsamples=100, method = "fitted"), poin
 plot(conditional_effects(m1, spaghetti=T, nsamples=100, method = "predict"), points=T) # here we say, show us also the sigma aka what we know we should expect as an error
 
 #now we test the hypothesis
-hypothesis(m1, "Diagnosis > 0.1") #given our model, what are the chances that the effect of Diagnosis is above 0
+hypothesis(m1, "Diagnosis > 0") #given our model, what are the chances that the effect of Diagnosis is above 0
 ```
 
 Q1.2) Is altercentric intrusion related to specific symptoms *in the patients*? Identify which of the symptoms could be relevant (given their description above). Should you include more than one symptom? Build models, priors, predictive checks. Assess the evidence and report models and results, including plots. Discuss whether the results make sense.
@@ -242,46 +244,9 @@ plot(conditional_effects(m2, spaghetti=T, nsamples=100, method = "fitted"), poin
 
 plot(conditional_effects(m2, spaghetti=T, nsamples=100, method = "predict"), points=T) # here we say, show us also the sigma aka what we know we should expect as an error
 
-```
-
-```{r}
-#lolling around with priors
-#defining priors
-m_vh_mr_p2 <- c(
-  prior(normal(0, 1), class = Intercept), #since we scaled the data, these priors for intercept are reasonable
-  prior(normal(1, 0.5), class = sigma), #we expect the model to perform as bad as the mean
-  prior(normal(0, 0.5), class = b, coef = VH ),
-  prior(normal(0, 0.5), class = b, coef = MR)
-)
-
-#building the model
-m2_2 <- brm(
-  formula = m_vh_mr,
-  data = patients,
-  family = gaussian,
-  prior = m_vh_mr_p2,
-  sample_prior= T, #True, because then it includes the likelihood
-  file = "m2.2"
-)
-
-#predictive posterior check 
-pp_check(m2_2, nsamples = 100)
-
-
-#posterior stuff
-patients_posterior2 <-  posterior_samples(m2_2)
-
-#plotting the beta values
-ggplot(patients_posterior2) +
-  theme_classic() +
-  geom_density(aes(prior_b_MR), fill="red", alpha=0.3) +
-  geom_density(aes(b_MR), fill="blue", alpha=0.5)
-
-#plotting the beta values 
-ggplot(patients_posterior2) +
-  theme_classic() +
-  geom_density(aes(prior_b_VH), fill="red", alpha=0.3) +
-  geom_density(aes(b_VH), fill="blue", alpha=0.5)
+#hypothesis testing
+hypothesis(m2, "MR > 0")
+hypothesis(m2, "VH > 0")
 ```
 
 
@@ -379,6 +344,8 @@ plot(conditional_effects(m3, spaghetti=T, nsamples=100, method = "predict"), poi
 
 #hypothesis testing
 hypothesis(m3, "MR > 0")
+hypothesis(m3, "VH > 0")
+
 ```
 
 ## Third part
@@ -393,8 +360,7 @@ Q3.2) OPTIONAL: is this a general pattern? Try varying the parameters (e.g. corr
 
 ```{r}
 pacman::p_load(MASS, tidyverse, psych)
-
-seed <- 1981 # Defining a seed so the results are always the same
+set.seed(1981) # Defining a seed so the results are always the same
 n <- 300 # Defining the amount of participants
 
 SymptomCorr <- .2 # Defining the correlation of symptoms (as they tend to co-occur)
